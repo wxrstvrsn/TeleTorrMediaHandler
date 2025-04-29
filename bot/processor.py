@@ -51,5 +51,9 @@ async def split_by_size_and_send(input_file, base_name, context):
             output_path
         ]
         subprocess.run(cmd, check=True)
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 100 * 1024:
+            print(f"Ошибка: файл {output_filename} не был создан корректно. Пропускаем отправку.")
+            continue
+
         await upload_to_telegram(output_path, output_filename, context)
         os.remove(output_path)
