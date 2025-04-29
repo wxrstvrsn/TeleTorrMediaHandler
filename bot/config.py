@@ -8,7 +8,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
-MAX_FILESIZE_MB = 1950
+MAX_FILESIZE_MB = 1000
 DOWNLOAD_DIR = "downloads"
 TEMP_DIR = "temp"
 

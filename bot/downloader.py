@@ -12,13 +12,12 @@ async def download_magnet(magnet_link, context):
         "aria2c", magnet_link,
         "--dir=" + DOWNLOAD_DIR,
         "--seed-time=0",
+        "--summary-interval=10",
         "--bt-save-metadata=true",
         "--follow-torrent=mem",
         "--max-concurrent-downloads=5",
-        "--split=5",
-        "--allow-overwrite=true",
+        "--split=5"
     ]
-
     process = subprocess.run(download_cmd)
     if process.returncode != 0:
         await context.bot.send_message(chat_id=context._chat_id, text="Ошибка при скачивании.")
