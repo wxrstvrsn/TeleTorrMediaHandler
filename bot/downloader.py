@@ -2,13 +2,15 @@
 # ------------
 import os
 import asyncio
+import logging
 from config import DOWNLOAD_DIR
 from utils import ensure_dir
 
+logger = logging.getLogger(__name__)
+
 async def download_torrent(magnet_link: str) -> str:
     """
-    Скачивает торрент через aria2c и возвращает путь к
-    самому большому скачанному видео-файлу.
+    Скачивает торрент через aria2c и возвращает путь к самому большому видео-файлу.
     """
     ensure_dir(DOWNLOAD_DIR)
     cmd = [
@@ -20,7 +22,7 @@ async def download_torrent(magnet_link: str) -> str:
         "--summary-interval=10",
         magnet_link
     ]
-    print(f"[downloader] Запуск aria2c: {' '.join(cmd)}")
+    logger.info(f"[downloader] Запуск aria2c: {' '.join(cmd)}")
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -28,21 +30,23 @@ async def download_torrent(magnet_link: str) -> str:
     )
     out, err = await proc.communicate()
     if proc.returncode != 0:
-        raise RuntimeError(f"aria2c вернул ошибку: {err.decode().strip()}")
+        msg = err.decode().strip()
+        logger.error(f"[downloader] aria2c ошибка: {msg}")
+        raise RuntimeError(f"aria2c вернул ошибку: {msg}")
 
-    # После завершения aria2c в DOWNLOAD_DIR появятся файлы
     largest_file = None
     largest_size = 0
     for root, _, files in os.walk(DOWNLOAD_DIR):
         for fname in files:
             path = os.path.join(root, fname)
             size = os.path.getsize(path)
-            # учитываем только видеофайлы
             if size > largest_size and path.lower().endswith((".mp4", ".mkv", ".avi")):
                 largest_size = size
                 largest_file = path
 
     if not largest_file:
+        logger.error("[downloader] Видео не найдено после загрузки")
         raise FileNotFoundError("Не найдено скачанного видео-файла")
-    print(f"[downloader] Завершено, найден файл: {largest_file}")
+
+    logger.info(f"[downloader] Завершено, найден файл: {largest_file}")
     return largest_file

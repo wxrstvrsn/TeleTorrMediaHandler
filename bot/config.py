@@ -1,16 +1,21 @@
 ﻿# config.py
+# ------------
 import os
 from dotenv import load_dotenv
-# ------------
+
+# Загружаем переменные окружения (API_ID, API_HASH, SESSION_NAME, CHAT_ID)
 load_dotenv()
-# Конфигурация Telethon и пути
-API_ID = os.getenv("API_ID")  # замените на ваш API_ID
+
+API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 SESSION_NAME = os.getenv("SESSION_NAME")
-# Чат (или канал), куда будете отправлять видео
-# Можно получить chat_id из @get_id_bot или Telethon
-CHAT_ID = os.getenv("CHAT_ID")
+# ID вашего канала для публикации (int)
+CHAT_ID = int(os.getenv("CHAT_ID"))
 
-# Папки для хранения загрузок и обработанных файлов
+# Папки для хранения
 DOWNLOAD_DIR = "downloads"
 PROCESSED_DIR = "processed"
+
+# Параметры задержек для снижения риска спама
+# Секунд между отправками частей видео
+UPLOAD_DELAY_SECONDS = 60
