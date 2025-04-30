@@ -1,25 +1,48 @@
 ﻿# downloader.py
-
+# ------------
 import os
-import subprocess
+import asyncio
 from config import DOWNLOAD_DIR
-from processor import process_videos
+from utils import ensure_dir
 
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-async def download_magnet(magnet_link, context):
-    download_cmd = [
-        "aria2c", magnet_link,
-        "--dir=" + DOWNLOAD_DIR,
+async def download_torrent(magnet_link: str) -> str:
+    """
+    Скачивает торрент через aria2c и возвращает путь к
+    самому большому скачанному видео-файлу.
+    """
+    ensure_dir(DOWNLOAD_DIR)
+    cmd = [
+        "aria2c",
+        f"--dir={DOWNLOAD_DIR}",
         "--seed-time=0",
-        "--summary-interval=10",
         "--bt-save-metadata=true",
         "--follow-torrent=mem",
-        "--max-concurrent-downloads=5",
-        "--split=5"
+        "--summary-interval=10",
+        magnet_link
     ]
-    process = subprocess.run(download_cmd)
-    if process.returncode != 0:
-        await context.bot.send_message(chat_id=context._chat_id, text="Ошибка при скачивании.")
-        return
-    await process_videos(context)
+    print(f"[downloader] Запуск aria2c: {' '.join(cmd)}")
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"aria2c вернул ошибку: {err.decode().strip()}")
+
+    # После завершения aria2c в DOWNLOAD_DIR появятся файлы
+    largest_file = None
+    largest_size = 0
+    for root, _, files in os.walk(DOWNLOAD_DIR):
+        for fname in files:
+            path = os.path.join(root, fname)
+            size = os.path.getsize(path)
+            # учитываем только видеофайлы
+            if size > largest_size and path.lower().endswith((".mp4", ".mkv", ".avi")):
+                largest_size = size
+                largest_file = path
+
+    if not largest_file:
+        raise FileNotFoundError("Не найдено скачанного видео-файла")
+    print(f"[downloader] Завершено, найден файл: {largest_file}")
+    return largest_file

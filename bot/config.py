@@ -1,17 +1,16 @@
 ﻿# config.py
-
 import os
 from dotenv import load_dotenv
-
-# Загружаем .env
+# ------------
 load_dotenv()
+# Конфигурация Telethon и пути
+API_ID = os.getenv("API_ID")  # замените на ваш API_ID
+API_HASH = os.getenv("API_HASH")
+SESSION_NAME = os.getenv("SESSION_NAME")
+# Чат (или канал), куда будете отправлять видео
+# Можно получить chat_id из @get_id_bot или Telethon
+CHAT_ID = os.getenv("CHAT_ID")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-MAX_FILESIZE_MB = 1000
+# Папки для хранения загрузок и обработанных файлов
 DOWNLOAD_DIR = "downloads"
-TEMP_DIR = "temp"
-
-# Быстрая проверка
-if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN не найден. Убедись, что он указан в .env")
+PROCESSED_DIR = "processed"

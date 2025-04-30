@@ -1,28 +1,35 @@
 ﻿# bot.py
+# ------------
+import asyncio
+from telethon import events
+from downloader import download_torrent
+from processor import split_video
+from telegram_uploader import get_client, send_video_files
 
-import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from config import BOT_TOKEN
-from downloader import download_magnet
-import os
 
-logging.basicConfig(level=logging.INFO)
+async def main():
+    client = get_client()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Отправь мне magnet-ссылку, и я скачаю и загружу в канал!")
+    @client.on(events.NewMessage(pattern=r"https?://.*\\.torrent"))
+    async def handler(event):
+        link = event.raw_text.strip()
+        msg = await event.reply("🔄 Начинаю загрузку...")
 
-async def handle_magnet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    link = update.message.text.strip()
-    if not link.startswith("magnet:?"):
-        await update.message.reply_text("Это не похоже на magnet-ссылку.")
-        return
-    await update.message.reply_text("Скачиваю...")
-    await download_magnet(link, context)
+        loop = asyncio.get_event_loop()
+        try:
+            in_file = await download_torrent(link)
+            await msg.edit("⚙️ Обработка видео (разбиение на части)...")
+            parts = await loop.run_in_executor(None, split_video, in_file)
+            await msg.edit(f"🚀 Отправка {len(parts)} частей...")
+            await send_video_files(client, parts)
+            await msg.edit("✅ Готово!")
+        except Exception as e:
+            await msg.edit(f"❌ Ошибка: {e}")
 
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_magnet))
+    print("[bot] Запуск MTProto-бота...")
+    await client.start()
+    await client.run_until_disconnected()
+
 
 if __name__ == '__main__':
-    app.run_polling()
+    asyncio.run(main())
