@@ -4,8 +4,7 @@ import os
 import asyncio
 import logging
 import getpass
-
-from telethon import events
+from telethon import TelegramClient, events, errors
 from telethon.tl.types import DocumentAttributeFilename
 
 import config
@@ -13,6 +12,8 @@ from downloader import download_torrent
 from processor import split_video
 from telegram_uploader import get_client, send_video_files
 from utils import ensure_dir
+
+#------------------------
 
 # Настройка логирования
 root_logger = logging.getLogger()
@@ -25,90 +26,121 @@ formatter = logging.Formatter(
 )
 console_handler.setFormatter(formatter)
 root_logger.handlers = [console_handler]
-
 logger = logging.getLogger('bot')
+
+# Флаг режима обновления подписей
+update_names_mode = False
 
 async def main():
     client = get_client()
     logger.info("Инициализация бота...")
 
-    # Тестовый хэндлер для /start
     @client.on(events.NewMessage(outgoing=True, pattern=r"^/start$"))
-    async def test_handler(event):
-        logger.debug("Тестовый хэндлер сработал (/start)")
-        await event.reply("✅ Бот активирован! Отправьте ссылку на torrent или magnet.")
-        return
+    async def start_handler(event):
+        logger.debug("Получена команда /start")
+        await event.reply("✅ Бот активирован! Отправьте ссылку на torrent, magnet или .torrent файл.")
 
-    # Основной хэндлер
+    @client.on(events.NewMessage(outgoing=True, pattern=r"^/updateNames$"))
+    async def update_mode_handler(event):
+        nonlocal update_names_mode  # noqa: F821
+        update_names_mode = True
+        logger.info("Режим обновления подписей включен")
+        await event.reply("🔄 Режим обновления подписей включён. Новые видео получат подписи по имени файла.")
+
+    @client.on(events.NewMessage(incoming=True, chats=config.CHAT_ID))
+    async def update_names_handler(event):
+        global update_names_mode
+        if not update_names_mode:
+            return
+        doc = event.message.document
+        if not doc:
+            return
+        # Ищем оригинальное имя файла
+        file_name = None
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeFilename):
+                file_name = attr.file_name
+                break
+        if not file_name:
+            return
+        try:
+            await client.edit_message(
+                entity=config.CHAT_ID,
+                message=event.message.id,
+                caption=file_name
+            )
+            logger.info(f"Подпись сообщения {event.message.id} обновлена на: {file_name}")
+        except errors.MessageNotModifiedError:
+            logger.debug(f"Сообщение {event.message.id} уже имеет необходимую подпись")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении подписи: {e}")
+
     @client.on(events.NewMessage(incoming=True, outgoing=True))
     async def handler(event):
-        logger.info("Получено сообщение от пользователя")
+        # Основной функционал: загрузка, обработка, отправка
+        text = (event.raw_text or '').strip()
+        logger.info("Получено сообщение для обработки")
         link = None
         is_file = False
 
-        txt = (event.raw_text or '').strip()
-        # Распознаём источники
-        if txt.startswith("magnet:"):
-            link = txt
+        # Распознаём магнит, URL или .torrent
+        if text.startswith("magnet:"):
+            link = text
             logger.debug("Распознан magnet-ссылка")
-        elif txt.lower().startswith("http") and txt.lower().endswith(".torrent"):
-            link = txt
+        elif text.lower().startswith("http") and text.lower().endswith(".torrent"):
+            link = text
             logger.debug("Распознан HTTP .torrent URL")
         elif event.message.document:
-            # Локальный .torrent файл
             for attr in event.message.document.attributes:
                 if isinstance(attr, DocumentAttributeFilename) and attr.file_name.lower().endswith(".torrent"):
-                    ensure_dir(config.DOWNLOAD_DIR)
                     torrent_path = os.path.join(config.DOWNLOAD_DIR, attr.file_name)
-                    logger.debug(f"Загрузка .torrent-файла: {attr.file_name}")
-                    await event.reply("📥 Получаю .torrent-файл...")
+                    logger.debug(f"Скачиваем .torrent-файл: {attr.file_name}")
+                    ensure_dir(config.DOWNLOAD_DIR)
+                    await event.reply("📥 Загружаю .torrent файл...")
                     await client.download_media(event.message, file=torrent_path)
                     link = torrent_path
                     is_file = True
                     break
 
         if not link:
-            logger.debug("Источник не распознан, пропуск сообщения")
+            logger.debug("Сообщение не распознано как torrent/magnet/file, пропуск")
             return
 
-        source_type = "файл" if is_file else "ссылка"
-        logger.info(f"Новый источник ({source_type}): {link}")
-        msg = await event.reply("🔗 Ссылка получена, начинаю обработку...")
-
+        # Старт обработки
+        await event.reply("🔗 Ссылка получена, начинаю обработку...")
         try:
-            # Этап загрузки
+            # Шаг 1: загрузка
             logger.info("Этап 1/3: загрузка торрента")
-            await msg.edit("⬇️ Скачиваю торрент... Это может занять время.")
             in_file = await download_torrent(link)
 
-            # Этап обработки
-            logger.info("Этап 2/3: конвертация и разбивка видео")
-            await msg.edit("⚙️ Конвертирую и разбиваю видео на части...")
+            # Шаг 2: конвертация и нарезка
+            logger.info("Этап 2/3: конвертация и нарезка видео")
             parts = await asyncio.get_event_loop().run_in_executor(None, split_video, in_file)
 
-            # Этап отправки
-            logger.info(f"Этап 3/3: отправка {len(parts)} частей")
-            await msg.edit(f"🚀 Начинаю отправку {len(parts)} частей в канал...")
-            await send_video_files(client, parts, msg)
 
-            # Завершение
-            await msg.edit("✅ Все части успешно отправлены в канал!")
-            logger.info("Обработка успешно завершена");
+            # Шаг 3: отправка
+            if config.ENABLE_UPLOAD:
+                logger.info(f"Этап 3/3: отправка {len(parts)} частей")
+                await send_video_files(client, parts, event)
+
+                logger.info("Обработка завершена успешно")
+                await event.reply("✅ Все части видео отправлены")
+            else:
+                logger.info(f"Этап 3/3: отправка {len(parts)} скоро будет выполнена... \t Следите за обновлениями :P")
         except Exception as e:
             logger.exception("Ошибка в процессе обработки")
-            try:
-                await msg.edit(f"❌ Ошибка: {e}")
-            except Exception:
-                logger.error("Не удалось обновить сообщение об ошибке")
+            await event.reply(f"❌ Ошибка обработки: {e}")
 
-    # Запуск бота
+    # Запуск бота и авторизация
     logger.info("Запуск MTProto-бота...")
     await client.start(
         phone=lambda: input("📲 Введите номер телефона (с +7...): "),
         code_callback=lambda: input("🔑 Введите код из Telegram: "),
         password=lambda: getpass.getpass("🔒 Введите пароль 2FA (или просто Enter): ")
     )
-    logger.info("Бот авторизован и готов к работе")
+    me = await client.get_me()
+    logger.info(f"Бот авторизован как {me.username} (id={me.id})")
+    logger.info("Ожидание команд и новых сообщений...")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':

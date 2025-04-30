@@ -19,3 +19,6 @@ PROCESSED_DIR = "processed"
 # Параметры задержек для снижения риска спама
 # Секунд между отправками частей видео
 UPLOAD_DELAY_SECONDS = 60
+
+# Включение / выключение загрузки в тг
+ENABLE_UPLOAD = os.getenv("ENABLE_UPLOAD")
