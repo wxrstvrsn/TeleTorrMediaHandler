@@ -16,21 +16,13 @@ async def process_videos(context):
         temp_output_dir = os.path.join(TEMP_DIR, base_name + "_parts")
         os.makedirs(temp_output_dir, exist_ok=True)
 
-        size_mb = os.path.getsize(file) / (1024 * 1024)
-        if file.endswith(".mp4") and size_mb <= MAX_FILESIZE_MB:
-            await log(context, f"📦 Отправка: {filename}")
-            await upload_to_telegram(file, filename, context)
-            try:
-                os.remove(file)
-            except PermissionError as e:
-                await log(context, f"⚠️ Не удалось удалить файл (занят): {file} — {e}")
-        else:
-            await log(context, f"🎬 Обработка видео: {filename}")
-            await split_by_size_and_send(file, base_name, context)
-            try:
-                os.remove(file)
-            except PermissionError as e:
-                await log(context, f"⚠️ Не удалось удалить файл (занят): {file} — {e}")
+        await log(context, f"🎬 Принудительная перекодировка: {filename}")
+        await split_by_size_and_send(file, base_name, context)
+
+        try:
+            os.remove(file)
+        except PermissionError as e:
+            await log(context, f"⚠️ Не удалось удалить файл (занят): {file} — {e}")
 
 async def split_by_size_and_send(input_file, base_name, context):
     duration = get_video_duration(input_file)
@@ -48,7 +40,7 @@ async def split_by_size_and_send(input_file, base_name, context):
         output_filename = f"{base_name}_part{i+1:03d}.mp4"
         output_path = os.path.join(TEMP_DIR, output_filename)
 
-        cmd = [
+        recode_cmd = [
             "ffmpeg", "-y",
             "-ss", str(int(start_time)),
             "-t", str(int(part_duration)),
@@ -62,29 +54,27 @@ async def split_by_size_and_send(input_file, base_name, context):
             output_path
         ]
 
+        await log(context, f"🎞️ ffmpeg (recode): {output_filename}")
+        proc = await asyncio.create_subprocess_exec(*recode_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+
+        async for line in proc.stdout:
+            decoded = line.decode('utf-8', errors='replace').strip()
+            if decoded:
+                print(f"[ffmpeg recode] {decoded}")
+
+        await proc.wait()
+
+        if not os.path.exists(output_path):
+            await log(context, f"❌ ffmpeg не создал файл: {output_filename}")
+            continue
+
+        size = os.path.getsize(output_path) / (1024 * 1024)
+        await log(context, f"📁 Файл создан: {output_path}, размер: {size:.2f} MB")
+        await log(context, f"📤 Попытка отправки: {output_filename}")
+        await upload_to_telegram(output_path, output_filename, context)
+        await log(context, f"✅ Отправка завершена: {output_filename}")
+
         try:
-            await log(context, f"🎞️ ffmpeg (copy): {output_filename}")
-            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-
-            async for line in proc.stdout:
-                decoded = line.decode('utf-8', errors='replace').strip()
-                if decoded:
-                    print(f"[ffmpeg] {decoded}")
-
-            await proc.wait()
-
-            if not os.path.exists(output_path):
-                await log(context, f"❌ ffmpeg не создал файл: {output_filename}")
-                continue
-
-            size = os.path.getsize(output_path) / (1024 * 1024)
-            await log(context, f"📁 Файл создан: {output_path}, размер: {size:.2f} MB")
-            await log(context, f"📤 Попытка отправки: {output_filename}")
-            await upload_to_telegram(output_path, output_filename, context)
-            await log(context, f"✅ Отправка завершена: {output_filename}")
-            try:
-                os.remove(output_path)
-            except PermissionError as e:
-                await log(context, f"⚠️ Не удалось удалить файл (занят): {output_path} — {e}")
-        except Exception as e:
-            await log(context, f"⚠️ Ошибка обработки {output_filename}: {e}")
+            os.remove(output_path)
+        except PermissionError as e:
+            await log(context, f"⚠️ Не удалось удалить файл (занят): {output_path} — {e}")
