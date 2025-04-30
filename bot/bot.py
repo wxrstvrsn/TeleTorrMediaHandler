@@ -35,19 +35,19 @@ async def main():
     client = get_client()
     logger.info("Инициализация бота...")
 
-    @client.on(events.NewMessage(outgoing=True, pattern=r"^/start$"))
+    @client.on(events.NewMessage(outgoing=True, incoming=True, pattern=r"^/start$"))
     async def start_handler(event):
         logger.debug("Получена команда /start")
         await event.reply("✅ Бот активирован! Отправьте ссылку на torrent, magnet или .torrent файл.")
 
-    @client.on(events.NewMessage(outgoing=True, pattern=r"^/updateNames$"))
+    @client.on(events.NewMessage(outgoing=True, incoming=True, pattern=r"^/updateNames$"))
     async def update_mode_handler(event):
-        nonlocal update_names_mode  # noqa: F821
+        global update_names_mode  # noqa: F821
         update_names_mode = True
         logger.info("Режим обновления подписей включен")
         await event.reply("🔄 Режим обновления подписей включён. Новые видео получат подписи по имени файла.")
 
-    @client.on(events.NewMessage(incoming=True, chats=config.CHAT_ID))
+    @client.on(events.NewMessage(incoming=True, outgoing=True, chats=config.CHAT_ID))
     async def update_names_handler(event):
         global update_names_mode
         if not update_names_mode:
