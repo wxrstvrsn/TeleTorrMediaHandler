@@ -53,9 +53,15 @@ async def split_by_size_and_send(input_file, base_name, context):
             "-ss", str(int(start_time)),
             "-t", str(int(part_duration)),
             "-i", input_file,
-            "-c", "copy",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
             output_path
         ]
+
         try:
             await log(context, f"🎞️ ffmpeg (copy): {output_filename}")
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
