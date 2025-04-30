@@ -30,8 +30,11 @@ async def send_video_files(client: TelegramClient, files: list[str], msg) -> Non
                 config.CHAT_ID,
                 fpath,
                 supports_streaming=True,
-                progress_callback=lambda sent, total_bytes: logger.debug(f"[uploader] {sent}/{total_bytes}"),
+                part_size_kb=4096,  # или даже 8192
+                use_cache=False,
+                progress_callback=lambda sent, total: logger.debug(f"{sent}/{total}")
             )
+
             logger.info(f"[uploader] Часть {idx} успешно отправлена")
         except errors.FloodWaitError as e:
             logger.warning(f"FloodWait: сплю {e.seconds}s")

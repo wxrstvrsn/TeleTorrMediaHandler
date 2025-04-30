@@ -40,8 +40,12 @@ async def download_torrent(source: str) -> str:
         if not line:
             break
         text = line.decode("utf-8", errors="ignore").rstrip()
-        if text:
-            logger.info(f"[downloader] {text}")
+        if not text:
+            continue
+        # Фильтр: убираем низкоуровневые CUID# и piece/request логгинг
+        if 'CUID#' in text or 'piece index' in text or 'request index' in text:
+            continue
+        logger.info(f"[downloader] {text}")
 
     code = await proc.wait()
     if code != 0:
