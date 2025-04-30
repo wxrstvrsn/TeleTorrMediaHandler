@@ -13,7 +13,7 @@ from processor import split_video
 from telegram_uploader import get_client, send_video_files
 from utils import ensure_dir
 
-#------------------------
+# ------------------------
 
 # Настройка логирования
 root_logger = logging.getLogger()
@@ -31,6 +31,7 @@ logger = logging.getLogger('bot')
 # Флаг режима обновления подписей
 update_names_mode = False
 
+
 async def main():
     client = get_client()
     logger.info("Инициализация бота...")
@@ -47,14 +48,17 @@ async def main():
         logger.info("Режим обновления подписей включен")
         await event.reply("🔄 Режим обновления подписей включён. Новые видео получат подписи по имени файла.")
 
-    @client.on(events.NewMessage(incoming=True, outgoing=True, chats=config.CHAT_ID))
+    @client.on(events.NewMessage(incoming=True, chats=config.CHAT_ID))
     async def update_names_handler(event):
+        # Обработка новых сообщений для обновления подписей при включённом режиме
         global update_names_mode
         if not update_names_mode:
             return
+
         doc = event.message.document
         if not doc:
             return
+
         # Ищем оригинальное имя файла
         file_name = None
         for attr in doc.attributes:
@@ -63,17 +67,15 @@ async def main():
                 break
         if not file_name:
             return
+
         try:
-            await client.edit_message(
-                entity=config.CHAT_ID,
-                message=event.message.id,
-                caption=file_name
-            )
+            # Редактируем подпись медиа-сообщения
+            await event.message.edit(file_name)
             logger.info(f"Подпись сообщения {event.message.id} обновлена на: {file_name}")
         except errors.MessageNotModifiedError:
             logger.debug(f"Сообщение {event.message.id} уже имеет необходимую подпись")
         except Exception as e:
-            logger.error(f"Ошибка при обновлении подписи: {e}")
+            logger.error(f"Не удалось изменить подпись: {e}")
 
     @client.on(events.NewMessage(incoming=True, outgoing=True))
     async def handler(event):
@@ -117,7 +119,6 @@ async def main():
             logger.info("Этап 2/3: конвертация и нарезка видео")
             parts = await asyncio.get_event_loop().run_in_executor(None, split_video, in_file)
 
-
             # Шаг 3: отправка
             if config.ENABLE_UPLOAD:
                 logger.info(f"Этап 3/3: отправка {len(parts)} частей")
@@ -142,6 +143,7 @@ async def main():
     logger.info(f"Бот авторизован как {me.username} (id={me.id})")
     logger.info("Ожидание команд и новых сообщений...")
     await client.run_until_disconnected()
+
 
 if __name__ == '__main__':
     asyncio.run(main())
