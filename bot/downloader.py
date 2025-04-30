@@ -1,5 +1,5 @@
 ﻿# downloader.py
-# ------------
+
 import os
 import asyncio
 import logging
@@ -8,45 +8,58 @@ from utils import ensure_dir
 
 logger = logging.getLogger(__name__)
 
-async def download_torrent(magnet_link: str) -> str:
+
+async def download_torrent(source: str) -> str:
     """
-    Скачивает торрент через aria2c и возвращает путь к самому большому видео-файлу.
+    Скачивает торрент через aria2c, выводя прогресс в консоль.
     """
     ensure_dir(DOWNLOAD_DIR)
+
+    # Формируем команду с нужными флагами
     cmd = [
         "aria2c",
         f"--dir={DOWNLOAD_DIR}",
         "--seed-time=0",
         "--bt-save-metadata=true",
         "--follow-torrent=mem",
-        "--summary-interval=10",
-        magnet_link
+        "--console-log-level=info",  # уровень логов – показываем прогресс
+        "--enable-color=false",  # отключаем цветные коды
+        source
     ]
     logger.info(f"[downloader] Запуск aria2c: {' '.join(cmd)}")
+
+    # Запускаем процесс и читаем STDOUT построчно
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT
     )
-    out, err = await proc.communicate()
-    if proc.returncode != 0:
-        msg = err.decode().strip()
-        logger.error(f"[downloader] aria2c ошибка: {msg}")
-        raise RuntimeError(f"aria2c вернул ошибку: {msg}")
+    assert proc.stdout
+    while True:
+        line = await proc.stdout.readline()
+        if not line:
+            break
+        text = line.decode("utf-8", errors="ignore").rstrip()
+        if text:
+            logger.info(f"[downloader] {text}")
 
-    largest_file = None
-    largest_size = 0
+    code = await proc.wait()
+    if code != 0:
+        logger.error(f"[downloader] aria2c завершился с кодом {code}")
+        raise RuntimeError(f"aria2c вернул ошибку {code}")
+
+    # Ищем самый большой видеофайл
+    largest, max_size = None, 0
     for root, _, files in os.walk(DOWNLOAD_DIR):
-        for fname in files:
-            path = os.path.join(root, fname)
-            size = os.path.getsize(path)
-            if size > largest_size and path.lower().endswith((".mp4", ".mkv", ".avi")):
-                largest_size = size
-                largest_file = path
+        for fn in files:
+            path = os.path.join(root, fn)
+            sz = os.path.getsize(path)
+            if sz > max_size and fn.lower().endswith((".mp4", ".mkv", ".avi")):
+                largest, max_size = path, sz
 
-    if not largest_file:
-        logger.error("[downloader] Видео не найдено после загрузки")
-        raise FileNotFoundError("Не найдено скачанного видео-файла")
+    if not largest:
+        logger.error("[downloader] Не найден видеофайл после загрузки")
+        raise FileNotFoundError("Видео не найдено в папке загрузки")
 
-    logger.info(f"[downloader] Завершено, найден файл: {largest_file}")
-    return largest_file
+    logger.info(f"[downloader] Файл готов: {largest}")
+    return largest

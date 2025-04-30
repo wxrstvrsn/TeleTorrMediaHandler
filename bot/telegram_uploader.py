@@ -9,9 +9,11 @@ import config
 
 logger = logging.getLogger(__name__)
 
+
 def get_client() -> TelegramClient:
     """Инициализирует Telethon-клиент"""
     return TelegramClient(config.SESSION_NAME, config.API_ID, config.API_HASH)
+
 
 async def send_video_files(client: TelegramClient, files: list[str], msg) -> None:
     """
