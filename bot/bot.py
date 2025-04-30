@@ -3,8 +3,8 @@
 import os
 import asyncio
 import logging
-import random
-from telethon import events, errors
+import getpass
+from telethon import events
 from telethon.tl.types import DocumentAttributeFilename
 import config
 from downloader import download_torrent
@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 async def main():
     client = get_client()
+
+    @client.on(events.NewMessage(pattern=r"^/start", incoming=True, outgoing=True))
+    async def test_handler(event):
+        logger.info("Тестовый хэндлер сработал")
+        await event.reply("ловушка сработала")
+        return
 
     @client.on(events.NewMessage)
     async def handler(event):
@@ -78,7 +84,11 @@ async def main():
                 pass
 
     logger.info("[bot] Запуск MTProto-бота...")
-    await client.start()
+    await client.start(
+        phone=lambda: input("📲 Введите номер телефона (с +7…): "),
+        code_callback=lambda: input("🔑 Введите код из Telegram: "),
+        password=lambda: getpass.getpass("🔒 Введите пароль 2FA (или просто Enter, если нет): ")
+    )
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
