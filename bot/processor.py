@@ -1,91 +1,79 @@
-﻿# processor.py
-
-import os
+﻿import os
 import math
 import asyncio
-import logging
+from typing import Optional
 from config import PROCESSED_DIR, MAX_FILESIZE_MB
-from utils import ensure_dir, get_video_duration
+from utils import get_video_info, run_ffmpeg, log, ensure_dir
 
-logger = logging.getLogger(__name__)
+# Размер части в байтах (1812 MiB — чуть меньше лимита Telegram)
+MAX_PART_BYTES = MAX_FILESIZE_MB * 1024 * 1024
 
 
-def split_video(input_path: str) -> list[str]:
-    ensure_dir(PROCESSED_DIR)
+async def split_video(input_path: str) -> list[str]:
+    info = await get_video_info(input_path)
+    duration = info["duration"]
+    video_bitrate = info["video_bitrate"]
+    audio_bitrate = info["audio_bitrate"]
 
-    total_size = os.path.getsize(input_path)
-    max_bytes = MAX_FILESIZE_MB * 1024 * 1024
+    log.info(f"[split] Длительность: {duration:.2f} сек")
+    log.info(f"[split] Битрейт видео: {video_bitrate} кбит/с, аудио: {audio_bitrate} кбит/с")
 
-    if total_size <= max_bytes:
-        logger.info(f"[split] Файл {input_path} уже меньше {MAX_FILESIZE_MB} МБ, перекодируем целиком")
-        return [recode_video(input_path, 0, None, 1)]
+    # Предсказание размера после перекодирования (в байтах)
+    total_bitrate_kbps = video_bitrate + audio_bitrate
+    estimated_size_bytes = (total_bitrate_kbps * 1000 / 8) * duration
 
-    duration = get_video_duration(input_path)
-    parts_count = math.ceil(total_size / max_bytes)
+    parts_count = max(1, math.ceil(estimated_size_bytes / MAX_PART_BYTES))
     part_duration = duration / parts_count
 
-    logger.info(f"[split] Длительность: {duration:.2f} сек — частей: {parts_count} (~{part_duration:.2f} сек каждая)")
+    log.info(f"[split] Предсказанный размер файла: {estimated_size_bytes / (1024 ** 2):.2f} MiB")
+    log.info(f"[split] Предполагаемое количество частей: {parts_count} (~{part_duration:.2f} сек каждая)")
 
-    parts = []
+    filenames = []
     for i in range(parts_count):
-        start = i * part_duration
-        out_path = os.path.join(
+        start = int(part_duration * i)
+        is_last = (i == parts_count - 1)
+        duration_arg = None if is_last else int(part_duration)
+
+        output_path = os.path.join(
             PROCESSED_DIR,
-            f"{os.path.splitext(os.path.basename(input_path))[0]}_part{i + 1:03}.mp4"
+            f"{os.path.basename(input_path).rsplit('.', 1)[0]}_part{i+1:03}.mp4"
         )
-        parts.append(recode_video(input_path, start, part_duration, i + 1, out_path))
 
-    return parts
+        log.info(f"[ffmpeg] 🎞️ Старт перекодировки: part #{i+1}")
+        success = await recode_video(
+            input_path=input_path,
+            output_path=output_path,
+            start=start,
+            duration=duration_arg
+        )
+
+        if success:
+            filenames.append(output_path)
+            size = os.path.getsize(output_path) / (1024 ** 2)
+            log.info(f"[split] ✅ Создан файл: {output_path} ({size:.2f} MiB)")
+        else:
+            log.error(f"[split] ❌ Ошибка при обработке part #{i+1}")
+            break
+
+    return filenames
 
 
-def recode_video(input_path: str, start: float, duration: float | None, part_num: int, output_path: str = None) -> str:
-    if not output_path:
-        base = os.path.splitext(os.path.basename(input_path))[0]
-        output_path = os.path.join(PROCESSED_DIR, f"{base}_part{part_num:03}.mp4")
-
+async def recode_video(input_path: str, output_path: str, start: int = 0, duration: Optional[int] = None) -> bool:
     cmd = [
         "ffmpeg", "-y",
         "-ss", str(start),
+        "-i", input_path,
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "18",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
     ]
 
     if duration:
         cmd += ["-t", str(duration)]
 
-    cmd += [
-        "-i", input_path,
-        "-stats",  # <== В нужном месте
-        "-progress", "pipe:1",  # <== Прямой прогресс в stdout
-        "-c:v", "libx264",
-        "-preset", "veryfast", #medium
-        "-crf", "23", # 18
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
-        output_path
-    ]
+    cmd += [output_path]
 
-    logger.info(f"[ffmpeg] 🎞️ Старт перекодировки: part #{part_num}")
-    result = asyncio.run(run_ffmpeg(cmd))
-    if not result:
-        raise RuntimeError(f"[ffmpeg] Ошибка при обработке part #{part_num}")
-
-    return output_path
-
-
-async def run_ffmpeg(cmd: list[str]) -> bool:
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-
-    assert process.stdout
-    while True:
-        line = await process.stdout.readline()
-        if not line:
-            break
-        decoded = line.decode(errors='ignore').strip()
-        if decoded:
-            logger.info(f"[ffmpeg] {decoded}")
-
-    return await process.wait() == 0
+    return await run_ffmpeg(cmd)
