@@ -17,7 +17,7 @@ from utils import ensure_dir
 
 # Настройка логирования
 root_logger = logging.getLogger()
-root_logger.setLevel(logging.DEBUG)
+root_logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
@@ -113,21 +113,25 @@ async def main():
         try:
             # Шаг 1: загрузка
             logger.info("Этап 1/3: загрузка торрента")
-            in_file = await download_torrent(link)
+            video_files = await download_torrent(link)
 
             # Шаг 2: конвертация и нарезка
-            logger.info("Этап 2/3: конвертация и нарезка видео")
-            parts = await asyncio.get_event_loop().run_in_executor(None, split_video, in_file)
+            logger.info(f"Этап 2/3: конвертация и нарезка {len(video_files)} файлов")
+            all_parts = []
+            for vf in video_files:
+                logger.info(f"Обработка видео: {vf}")
+                parts = await asyncio.get_event_loop().run_in_executor(None, split_video, vf)
+                all_parts.extend(parts)
 
             # Шаг 3: отправка
             if config.ENABLE_UPLOAD:
-                logger.info(f"Этап 3/3: отправка {len(parts)} частей")
-                await send_video_files(client, parts, event)
+                logger.info(f"Этап 3/3: отправка {len(all_parts)} частей")
+                await send_video_files(client, all_parts, event)
 
                 logger.info("Обработка завершена успешно")
-                await event.reply("✅ Все части видео отправлены")
+                await event.reply("✅ Все части всех видео отправлены")
             else:
-                logger.info(f"Этап 3/3: отправка {len(parts)} скоро будет выполнена... \t Следите за обновлениями :P")
+                logger.info(f"Этап 3/3: отправка {len(parts)} частей скоро будет выполнена... \t Следите за обновлениями :P")
         except Exception as e:
             logger.exception("Ошибка в процессе обработки")
             await event.reply(f"❌ Ошибка обработки: {e}")

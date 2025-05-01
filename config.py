@@ -22,3 +22,5 @@ UPLOAD_DELAY_SECONDS = 60
 
 # Включение / выключение загрузки в тг
 ENABLE_UPLOAD = os.getenv("ENABLE_UPLOAD")
+
+MAX_FILESIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB"))

@@ -52,18 +52,17 @@ async def download_torrent(source: str) -> str:
         logger.error(f"[downloader] aria2c завершился с кодом {code}")
         raise RuntimeError(f"aria2c вернул ошибку {code}")
 
-    # Ищем самый большой видеофайл
-    largest, max_size = None, 0
+    # Поиск всех видеофайлов, включая вложенные
+    video_files = []
     for root, _, files in os.walk(DOWNLOAD_DIR):
-        for fn in files:
-            path = os.path.join(root, fn)
-            sz = os.path.getsize(path)
-            if sz > max_size and fn.lower().endswith((".mp4", ".mkv", ".avi")):
-                largest, max_size = path, sz
+        for file in files:
+            if file.lower().endswith(('.mp4', '.mkv', '.avi')):
+                full_path = os.path.join(root, file)
+                video_files.append(full_path)
 
-    if not largest:
+    if not video_files:
         logger.error("[downloader] Не найден видеофайл после загрузки")
         raise FileNotFoundError("Видео не найдено в папке загрузки")
 
-    logger.info(f"[downloader] Файл готов: {largest}")
-    return largest
+
+    return video_files

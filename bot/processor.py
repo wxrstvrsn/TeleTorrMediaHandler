@@ -1,61 +1,84 @@
 ﻿# processor.py
-# ------------
+
 import os
 import math
-import subprocess
+import asyncio
 import logging
-from config import PROCESSED_DIR
-from utils import ensure_dir
+from config import PROCESSED_DIR, MAX_FILESIZE_MB
+from utils import ensure_dir, get_video_duration
 
 logger = logging.getLogger(__name__)
 
 
-def split_video(input_path: str, max_part_size: int = 2 * 1024 ** 3) -> list:
-    """
-    Разбивает видео на части не более max_part_size байт,
-    выводит прогресс преобразования ffmpeg в консоль.
-    Возвращает список путей к .mp4
-    """
+def split_video(input_path: str) -> list[str]:
     ensure_dir(PROCESSED_DIR)
-    total = os.path.getsize(input_path)
-    parts = math.ceil(total / max_part_size)
-    basename = os.path.splitext(os.path.basename(input_path))[0]
-    outputs = []
 
-    for i in range(parts):
-        start_offset = i * max_part_size
-        out_file = os.path.join(PROCESSED_DIR, f"{basename}_part{i + 1:03d}.mp4")
-        cmd = [
-            'ffmpeg',
-            '-y',
-            '-ss', str(start_offset),
-            '-i', input_path,
-            '-c', 'copy',
-            '-fs', str(max_part_size),
-            '-progress', 'pipe:1',
-            '-nostats',
-            out_file
-        ]
-        logger.info(f"[processor] Часть {i + 1}/{parts}: запуск ffmpeg")
-        # Запуск ffmpeg и вывод прогресса
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
+    total_size = os.path.getsize(input_path)
+    max_bytes = MAX_FILESIZE_MB * 1024 * 1024
+
+    if total_size <= max_bytes:
+        logger.info(f"[split] Файл {input_path} уже меньше {MAX_FILESIZE_MB} МБ, перекодируем целиком")
+        return [recode_video(input_path, 0, None, 1)]
+
+    duration = get_video_duration(input_path)
+    parts_count = math.ceil(total_size / max_bytes)
+    part_duration = duration / parts_count
+
+    logger.info(f"[split] Длительность: {duration:.2f} сек — частей: {parts_count} (~{part_duration:.2f} сек каждая)")
+
+    parts = []
+    for i in range(parts_count):
+        start = i * part_duration
+        out_path = os.path.join(
+            PROCESSED_DIR,
+            f"{os.path.splitext(os.path.basename(input_path))[0]}_part{i + 1:03}.mp4"
         )
-        assert process.stdout is not None
-        for line in process.stdout:
-            text = line.strip()
-            if text:
-                # Вывод ключевых метрик из ffmpeg-progress
-                logger.info(f"[processor] {text}")
-        retcode = process.wait()
-        if retcode != 0:
-            logger.error(f"[processor] ffmpeg завершился с кодом {retcode}")
-            raise RuntimeError(f"ffmpeg вернул ошибку {retcode}")
-        logger.info(f"[processor] Часть {i + 1} сохранена: {out_file}")
-        outputs.append(out_file)
+        parts.append(recode_video(input_path, start, part_duration, i + 1, out_path))
 
-    return outputs
+    return parts
+
+
+def recode_video(input_path: str, start: float, duration: float | None, part_num: int, output_path: str = None) -> str:
+    if not output_path:
+        base = os.path.splitext(os.path.basename(input_path))[0]
+        output_path = os.path.join(PROCESSED_DIR, f"{base}_part{part_num:03}.mp4")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(start),
+    ]
+
+    if duration:
+        cmd += ["-t", str(duration)]
+
+    cmd += [
+        "-i", input_path,
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "18",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart"
+        "-stats",
+        output_path
+    ]
+
+    logger.info(f"[ffmpeg] 🎞️ Старт перекодировки: part #{part_num}")
+    result = asyncio.run(run_ffmpeg(cmd))
+    if not result:
+        raise RuntimeError(f"[ffmpeg] Ошибка при обработке part #{part_num}")
+
+    return output_path
+
+
+async def run_ffmpeg(cmd: list[str]) -> bool:
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT
+    )
+    assert process.stdout
+    async for line in process.stdout:
+        logger.info(f"[ffmpeg] {line.decode(errors='ignore').strip()}")
+
+    return await process.wait() == 0
