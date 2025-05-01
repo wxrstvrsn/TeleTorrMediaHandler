@@ -4,8 +4,6 @@ import os
 import subprocess
 import json
 import logging
-import signal
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +29,3 @@ def get_video_duration(path: str) -> float:
     except Exception as e:
         logger.error(f"[ffprobe] Ошибка при получении длительности: {e}")
         raise
-
-active_processes: list[asyncio.subprocess.Process] = []
-
-def kill_active_processes():
-    for process in active_processes:
-        if process.returncode is None:
-            try:
-                process.kill()
-                print(f"[cleanup] 🔪 Процесс {process.pid} убит")
-            except Exception as e:
-                print(f"[cleanup] ❌ Ошибка при убийстве процесса {process.pid}: {e}")
-    active_processes.clear()

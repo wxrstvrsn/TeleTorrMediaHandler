@@ -121,7 +121,6 @@ async def main():
             all_parts = []
             for vf in video_files:
                 logger.info(f"Обработка видео: {vf}")
-                config.IS_CONVERTING = True
                 parts = await asyncio.get_event_loop().run_in_executor(None, split_video, vf)
                 all_parts.extend(parts)
 

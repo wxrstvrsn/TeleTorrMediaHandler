@@ -18,11 +18,11 @@ PROCESSED_DIR = "processed"
 
 # Параметры задержек для снижения риска спама
 # Секунд между отправками частей видео
-UPLOAD_DELAY_SECONDS = 60
+UPLOAD_DELAY_SECONDS = 10
 
 # Включение / выключение загрузки в тг
 ENABLE_UPLOAD = os.getenv("ENABLE_UPLOAD")
 
 MAX_FILESIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB"))
 
-IS_CONVERTING = bool(False)
+IS_CONVERTING = False

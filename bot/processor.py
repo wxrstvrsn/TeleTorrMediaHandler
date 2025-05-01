@@ -45,7 +45,6 @@ def recode_video(input_path: str, start: float, duration: float | None, part_num
 
     cmd = [
         "ffmpeg", "-y",
-        "-stats", # <- форсируем логирование прогресса
         "-ss", str(start),
     ]
 
@@ -54,9 +53,11 @@ def recode_video(input_path: str, start: float, duration: float | None, part_num
 
     cmd += [
         "-i", input_path,
+        "-stats",  # <== В нужном месте
+        "-progress", "pipe:1",  # <== Прямой прогресс в stdout
         "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", "18",
+        "-preset", "veryfast", #medium
+        "-crf", "23", # 18
         "-c:a", "aac",
         "-b:a", "128k",
         "-movflags", "+faststart",
@@ -71,29 +72,20 @@ def recode_video(input_path: str, start: float, duration: float | None, part_num
     return output_path
 
 
-import asyncio
-from loguru import logger
-
 async def run_ffmpeg(cmd: list[str]) -> bool:
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT
+        stderr=asyncio.subprocess.STDOUT,
     )
 
     assert process.stdout
-
-    try:
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            decoded_line = line.decode(errors='ignore').strip()
-            if decoded_line:
-                print(f"[ffmpeg] {decoded_line}")       # В консоль
-                logger.info(f"[ffmpeg] {decoded_line}")  # В лог
-    except Exception as e:
-        logger.error(f"[ffmpeg] Ошибка чтения вывода: {e}")
+    while True:
+        line = await process.stdout.readline()
+        if not line:
+            break
+        decoded = line.decode(errors='ignore').strip()
+        if decoded:
+            logger.info(f"[ffmpeg] {decoded}")
 
     return await process.wait() == 0
-
