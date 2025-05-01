@@ -150,6 +150,9 @@ async def main():
     await client.run_until_disconnected()
 
 def listen_console():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     while True:
         try:
             cmd = input().strip()
@@ -166,11 +169,11 @@ def listen_console():
                 print(f"🔄 Запуск конвертации: {path}")
                 config.IS_CONVERTING = True
                 try:
-                    parts = split_video(path)
+                    parts = loop.run_until_complete(split_video(path))
+
                     if config.ENABLE_UPLOAD and config.ENABLE_UPLOAD != "0":
                         client = get_client()
                         client.start()
-                        loop = asyncio.get_event_loop()
                         loop.run_until_complete(send_video_files(client, parts, msg=None))
                         client.disconnect()
                     else:
@@ -179,6 +182,7 @@ def listen_console():
                     config.IS_CONVERTING = False
         except Exception as e:
             print(f"❌ Ошибка в /convert: {e}")
+
 
 threading.Thread(target=listen_console, daemon=True).start()
 

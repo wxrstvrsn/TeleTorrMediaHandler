@@ -2,10 +2,11 @@
 import math
 from typing import List
 from config import PROCESSED_DIR, MAX_FILESIZE_MB
-from utils import get_video_info, run_ffmpeg, logger
+from utils import get_video_info, run_ffmpeg, logger, ensure_dir
 
 
 async def split_video(input_path: str) -> List[str]:
+    ensure_dir(PROCESSED_DIR)
     """Режет видео на части на основе оценки итогового размера после перекодировки"""
     video_info = get_video_info(input_path)
     if not video_info:

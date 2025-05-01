@@ -19,35 +19,39 @@ def ensure_dir(path: str):
 
 
 # находим данные файла
-def get_video_info(filepath: str) -> dict:
-    """Получает длительность и битрейт видео через ffprobe"""
+def get_video_info(path: str) -> dict:
     try:
         result = subprocess.run(
             [
                 "ffprobe", "-v", "error",
                 "-select_streams", "v:0",
-                "-show_entries", "format=duration:stream=bit_rate",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                filepath
+                "-show_entries", "format=duration,size,bit_rate",
+                "-of", "json",
+                path
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            check=True
+            text=True
         )
+        info = json.loads(result.stdout)
+        duration_str = info["format"].get("duration")
+        size_str = info["format"].get("size")
+        bitrate_str = info["format"].get("bit_rate")
 
-        lines = result.stdout.strip().split("\n")
+        if not duration_str or duration_str == "N/A":
+            raise ValueError("duration is not available")
+        if not size_str or size_str == "N/A":
+            raise ValueError("size is not available")
 
-        # Длительность в секундах (строка → float)
-        duration = float(lines[0])
-        # Битрейт в кбит/с (может быть на второй строке, иногда отсутствует)
-        bitrate = int(lines[1]) / 1000 if len(lines) > 1 else 1500  # по умолчанию — 1500 кбит/с
-
-        return {"duration": duration, "bitrate": bitrate}
-
+        return {
+            "duration": float(duration_str),
+            "size": int(size_str),
+            "bitrate": int(bitrate_str) if bitrate_str and bitrate_str != "N/A" else None
+        }
     except Exception as e:
         logger.error(f"[ffprobe] Не удалось получить инфо о видео: {e}")
-        return {}
+        raise
+
 
 async def run_ffmpeg(cmd: list[str]) -> bool:
     """Асинхронный запуск ffmpeg с выводом в лог"""
