@@ -12,6 +12,7 @@ from downloader import download_torrent
 from processor import split_video
 from telegram_uploader import get_client, send_video_files
 from utils import ensure_dir
+import threading
 
 # ------------------------
 
@@ -120,6 +121,7 @@ async def main():
             all_parts = []
             for vf in video_files:
                 logger.info(f"Обработка видео: {vf}")
+                config.IS_CONVERTING = True
                 parts = await asyncio.get_event_loop().run_in_executor(None, split_video, vf)
                 all_parts.extend(parts)
 
@@ -147,6 +149,39 @@ async def main():
     logger.info(f"Бот авторизован как {me.username} (id={me.id})")
     logger.info("Ожидание команд и новых сообщений...")
     await client.run_until_disconnected()
+
+def listen_console():
+    while True:
+        try:
+            cmd = input().strip()
+            if cmd.startswith("/convert "):
+                if config.IS_CONVERTING:
+                    print("⚠️ Уже идет процесс перекодировки. Подожди.")
+                    continue
+
+                path = cmd.replace("/convert", "").strip('" ')
+                if not os.path.isfile(path):
+                    print(f"❌ Файл не найден: {path}")
+                    continue
+
+                print(f"🔄 Запуск конвертации: {path}")
+                config.IS_CONVERTING = True
+                try:
+                    parts = split_video(path)
+                    if config.ENABLE_UPLOAD and config.ENABLE_UPLOAD != "0":
+                        client = get_client()
+                        client.start()
+                        loop = asyncio.get_event_loop()
+                        loop.run_until_complete(send_video_files(client, parts, msg=None))
+                        client.disconnect()
+                    else:
+                        print("📦 Режим загрузки (upload) отключен. Только нарезка.")
+                finally:
+                    config.IS_CONVERTING = False
+        except Exception as e:
+            print(f"❌ Ошибка в /convert: {e}")
+
+threading.Thread(target=listen_console, daemon=True).start()
 
 
 if __name__ == '__main__':
