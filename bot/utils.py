@@ -54,22 +54,17 @@ def get_video_info(path: str) -> dict:
 
 
 async def run_ffmpeg(cmd: list[str]) -> bool:
-    """Асинхронный запуск ffmpeg с выводом в лог"""
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT
-        )
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT
+    )
 
-        assert process.stdout
-        async for line in process.stdout:
-            decoded = line.decode(errors="ignore").strip()
-            if decoded:
-                logger.info(f"[ffmpeg] {decoded}")
+    assert process.stdout
+    while True:
+        line = await process.stdout.readline()
+        if not line:
+            break
+        logger.info(f"[ffmpeg] {line.decode(errors='ignore').strip()}")
 
-        return await process.wait() == 0
-
-    except Exception as e:
-        logger.error(f"[ffmpeg] Ошибка при выполнении команды: {e}")
-        return False
+    return await process.wait() == 0
