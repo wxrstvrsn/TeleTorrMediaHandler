@@ -166,10 +166,7 @@ def listen_console():
                 print(f"🔄 Запуск конвертации: {path}")
                 config.IS_CONVERTING = True
                 try:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    parts = loop.run_until_complete(split_video(path))
-
+                    parts = split_video(path)
                     if config.ENABLE_UPLOAD and config.ENABLE_UPLOAD != "0":
                         client = get_client()
                         client.start()
