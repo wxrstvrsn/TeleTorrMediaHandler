@@ -16,10 +16,12 @@ async def split_video(input_path: str) -> List[str]:
     bitrate = video_info["bitrate"]  # в кбит/с
 
     # Предсказанный размер итогового перекодированного файла
-    predicted_size_mib = (bitrate * duration) / 8 / 1024  # Kbps → KB → MB
+    predicted_size_bytes = (bitrate * duration)
+
+    max_filesize_bytes = MAX_FILESIZE_MB * 1024 * 1024
 
     # Кол-во частей
-    estimated_parts = max(1, math.ceil(predicted_size_mib / MAX_FILESIZE_MB))
+    estimated_parts = max(1, math.ceil(predicted_size_bytes / max_filesize_bytes))
     duration_per_part = duration / estimated_parts
 
     logger.info(f"[split] Длительность: {duration:.2f} сек — частей: {estimated_parts} (~{duration_per_part:.2f} сек каждая)")
